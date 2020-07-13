@@ -1,14 +1,11 @@
 import json
 import unittest
-from threading import Lock
 from flask import url_for, current_app
 from flask.wrappers import Response
 from monarch.app import create_app
 from monarch.corelibs.store import db
 from monarch.corelibs.mcredis import mc
-from monarch.models.company import Company
-from monarch.models.user import User
-from monarch.utils.tools import gen_id
+from monarch.exc.consts import CACHE_USER_TOKEN, CACHE_TWELVE_HOUR
 
 
 class TestResponse(Response):
@@ -50,23 +47,37 @@ class TestCase(unittest.TestCase):
         with self.app.test_request_context():
             return url_for(*args, **kwargs)
 
-    def _create_user(self, company_id, account, password):
-        with Lock():
-            with self.app.test_request_context():
-                user = User.create(
-                    id=gen_id(),
-                    company_id=company_id,
-                    password=password,
-                    account=account,
-                )
-                return user
+    def _login_admin(self, user_id):
+        import shortuuid
 
-    def _create_company(self, code, name):
-        with Lock():
-            with self.app.test_request_context():
-                company = Company.create(
-                    code=code,
-                    name=name,
-                )
-                return company
+        with self.app.test_request_context():
+            token = shortuuid.uuid()
+            mc.set(CACHE_USER_TOKEN.format(token), user_id, CACHE_TWELVE_HOUR)
+            return token
 
+    def assertJsonResp(self, resp):
+        try:
+            json.loads(resp.data)
+        except (ValueError, TypeError):
+            self.fail('Response data is not a json response')
+
+    def assertResp200(self, resp):
+        self.assertEqual(resp.status, '200 OK')
+
+    def assertResp302(self, resp):
+        self.assertEqual(resp.status, '302 FOUND')
+
+    def assertResp400(self, resp):
+        self.assertEqual(resp.status, '400 BAD REQUEST')
+
+    def assertResp401(self, resp):
+        self.assertEqual(resp.status, '401 UNAUTHORIZED')
+
+    def assertResp403(self, resp):
+        self.assertEqual(resp.status, '403 FORBIDDEN')
+
+    def assertResp404(self, resp):
+        self.assertEqual(resp.status, '404 NOT FOUND')
+
+    def assertResp500(self, resp):
+        self.assertEqual(resp.status, '500 INTERNAL SERVER ERROR')
